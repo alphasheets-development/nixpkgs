@@ -55,6 +55,8 @@
 , hardeningDisable ? lib.optional (ghc.isHaLVM or false) "all"
 , enableSeparateDataOutput ? false
 , enableSeparateDocOutput ? doHaddock
+, enableSeparateBinOutput ? isExecutable
+, outputsToInstall ? []
 } @ args:
 
 assert editedCabalFile != null -> revision != null;
@@ -373,6 +375,7 @@ stdenv.mkDerivation ({
          // optionalAttrs (description != "")  { inherit description; }
          // optionalAttrs (maintainers != [])  { inherit maintainers; }
          // optionalAttrs (hydraPlatforms != platforms) { inherit hydraPlatforms; }
+         // optionalAttrs (outputsToInstall != []) { inherit outputsToInstall; }
          ;
 
 }
