@@ -211,7 +211,7 @@ stdenv.mkDerivation ({
 
     echo "Build with ${ghc}."
     export PATH="${ghc}/bin:$PATH"
-    ${optionalString (hasActiveLibrary && hyperlinkSource) "export PATH=${hscolour}/bin:$PATH"}
+    ${optionalString (hasActiveLibrary && hyperlinkSource) "export PATH=${hscolour.bin}/bin:$PATH"}
 
     packageConfDir="$TMPDIR/package.conf.d"
     mkdir -p $packageConfDir
@@ -339,6 +339,7 @@ stdenv.mkDerivation ({
     mkdir -p $doc
     ''}
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
+    ${optionalString enableSeparateBinOutput "mkdir -p $bin"}
 
     runHook postInstall
   '';
