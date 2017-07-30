@@ -57,6 +57,7 @@
 , enableSeparateDocOutput ? doHaddock
 , enableSeparateBinOutput ? isExecutable
 , outputsToInstall ? []
+, enableSeparateLibOutput ? false
 } @ args:
 
 assert editedCabalFile != null -> revision != null;
@@ -93,6 +94,8 @@ let
                    '';
 
   hasActiveLibrary = isLibrary && (enableStaticLibraries || enableSharedLibraries || enableLibraryProfiling);
+  libDir = if enableSeparateLibOutput && hasActiveLibrary then "$lib/lib/${ghc.name}" else "$out/lib/${ghc.name}";
+  binDir = if enableSeparateBinOutput then "$bin/bin" else "$out/bin";
 
   # We cannot enable -j<n> parallelism for libraries because GHC is far more
   # likely to generate a non-determistic library ID in that case. Further
@@ -111,17 +114,18 @@ let
     stdenv.lib.optionalString isCross (" " + stdenv.lib.concatStringsSep " " crossCabalFlags);
 
   defaultConfigureFlags = [
-    "--verbose" "--prefix=$out" "--libdir=\\$prefix/lib/\\$compiler" "--libsubdir=\\$pkgid"
+    "--verbose" "--prefix=$out"
     # Binary directory has to be $bin/bin instead of just $bin: this
     # is so that the package is added to the PATH when it's used as a
     # build input. Sadly mkDerivation won't add inputs that don't have
     # bin subdirectory.
-    (optionalString enableSeparateBinOutput "--bindir=$bin/bin")
+    (optionalString enableSeparateBinOutput "--bindir=${binDir}")
+    "--libdir=${libDir}" "--libsubdir=\\$pkgid"
     (optionalString enableSeparateDataOutput "--datadir=$data/share/${ghc.name}")
     (optionalString enableSeparateDocOutput "--docdir=$doc/share/doc")
     "--with-gcc=$CC" # Clang won't work without that extra information.
     "--package-db=$packageConfDir"
-    (optionalString (enableSharedExecutables && stdenv.isLinux) "--ghc-option=-optl=-Wl,-rpath=$out/lib/${ghc.name}/${pname}-${version}")
+    (optionalString (enableSharedExecutables && stdenv.isLinux) "--ghc-option=-optl=-Wl,-rpath=${libDir}/${pname}-${version}")
     (optionalString (enableSharedExecutables && stdenv.isDarwin) "--ghc-option=-optl=-Wl,-headerpad_max_install_names")
     (optionalString enableParallelBuilding "--ghc-option=-j$NIX_BUILD_CORES")
     (optionalString useCpphs "--with-cpphs=${cpphs}/bin/cpphs --ghc-options=-cpp --ghc-options=-pgmP${cpphs}/bin/cpphs --ghc-options=-optP--cpp")
@@ -185,7 +189,7 @@ assert allPkgconfigDepends != [] -> pkgconfig != null;
 stdenv.mkDerivation ({
   name = "${pname}-${version}";
 
-  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin"));
+  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin") ++ (optional (enableSeparateLibOutput && hasActiveLibrary) "lib"));
   setOutputFlags = false;
 
   pos = builtins.unsafeGetAttrPos "pname" args;
@@ -209,7 +213,7 @@ stdenv.mkDerivation ({
 
   postPatch = optionalString jailbreak ''
     echo "Run jailbreak-cabal to lift version restrictions on build inputs."
-    ${jailbreak-cabal}/bin/jailbreak-cabal ${pname}.cabal
+    ${stdenv.lib.getBin jailbreak-cabal}/bin/jailbreak-cabal ${pname}.cabal
   '' + postPatch;
 
   setupCompilerEnvironmentPhase = ''
@@ -244,7 +248,7 @@ stdenv.mkDerivation ({
     #
     # Create a local directory with symlinks of the *.dylib (Mac OS X shared
     # libraries) from all the dependencies.
-    local dynamicLinksDir="$out/lib/links"
+    local dynamicLinksDir="${libDir}/links"
     mkdir -p $dynamicLinksDir
     for d in $(grep dynamic-library-dirs "$packageConfDir/"*|awk '{print $2}'); do
       ln -s "$d/"*.dylib $dynamicLinksDir
@@ -316,7 +320,7 @@ stdenv.mkDerivation ({
 
     ${if !hasActiveLibrary then "${setupCommand} install" else ''
       ${setupCommand} copy
-      local packageConfDir="$out/lib/${ghc.name}/package.conf.d"
+      local packageConfDir="${libDir}/package.conf.d"
       local packageConfFile="$packageConfDir/${pname}-${version}.conf"
       mkdir -p "$packageConfDir"
       ${setupCommand} register --gen-pkg-config=$packageConfFile
@@ -324,7 +328,7 @@ stdenv.mkDerivation ({
       mv $packageConfFile $packageConfDir/$pkgId.conf
     ''}
     ${optionalString isGhcjs ''
-      for exeDir in "$out/bin/"*.jsexe; do
+      for exeDir in "${binDir}/"*.jsexe; do
         exe="''${exeDir%.jsexe}"
         printWords '#!${nodejs}/bin/node' > "$exe"
         cat "$exeDir/all.js" >> "$exe"
@@ -333,8 +337,8 @@ stdenv.mkDerivation ({
     ''}
     ${optionalString doCoverage "mkdir -p $out/share && cp -r dist/hpc $out/share"}
     ${optionalString (enableSharedExecutables && isExecutable && !isGhcjs && stdenv.isDarwin && stdenv.lib.versionOlder ghc.version "7.10") ''
-      for exe in "$out/bin/"* ; do
-        install_name_tool -add_rpath "$out/lib/ghc-${ghc.version}/${pname}-${version}" "$exe"
+      for exe in "${binDir}/"* ; do
+        install_name_tool -add_rpath "${libDir}/${pname}-${version}" "$exe"
       done
     ''}
 
@@ -345,7 +349,7 @@ stdenv.mkDerivation ({
     mkdir -p $doc
     ''}
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
-    ${optionalString enableSeparateBinOutput "mkdir -p $bin/bin"}
+    ${optionalString enableSeparateBinOutput "mkdir -p ${binDir}"}
 
     runHook postInstall
   '';
