@@ -112,6 +112,11 @@ let
 
   defaultConfigureFlags = [
     "--verbose" "--prefix=$out" "--libdir=\\$prefix/lib/\\$compiler" "--libsubdir=\\$pkgid"
+    # Binary directory has to be $bin/bin instead of just $bin: this
+    # is so that the package is added to the PATH when it's used as a
+    # build input. Sadly mkDerivation won't add inputs that don't have
+    # bin subdirectory.
+    (optionalString enableSeparateBinOutput "--bindir=$bin/bin")
     (optionalString enableSeparateDataOutput "--datadir=$data/share/${ghc.name}")
     (optionalString enableSeparateDocOutput "--docdir=$doc/share/doc")
     "--with-gcc=$CC" # Clang won't work without that extra information.
@@ -150,7 +155,8 @@ let
   allPkgconfigDepends = pkgconfigDepends ++ libraryPkgconfigDepends ++ executablePkgconfigDepends ++
                         optionals doCheck testPkgconfigDepends ++ optionals withBenchmarkDepends benchmarkPkgconfigDepends;
 
-  nativeBuildInputs = buildTools ++ libraryToolDepends ++ executableToolDepends ++ [ removeReferencesTo ];
+  nativeBuildInputs = map stdenv.lib.getBin
+    (buildTools ++ libraryToolDepends ++ executableToolDepends ++ [ removeReferencesTo ]);
   propagatedBuildInputs = buildDepends ++ libraryHaskellDepends ++ executableHaskellDepends;
   otherBuildInputs = setupHaskellDepends ++ extraLibraries ++ librarySystemDepends ++ executableSystemDepends ++
                      optionals (allPkgconfigDepends != []) ([pkgconfig] ++ allPkgconfigDepends) ++
@@ -179,7 +185,7 @@ assert allPkgconfigDepends != [] -> pkgconfig != null;
 stdenv.mkDerivation ({
   name = "${pname}-${version}";
 
-  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc"));
+  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin"));
   setOutputFlags = false;
 
   pos = builtins.unsafeGetAttrPos "pname" args;
@@ -339,7 +345,7 @@ stdenv.mkDerivation ({
     mkdir -p $doc
     ''}
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
-    ${optionalString enableSeparateBinOutput "mkdir -p $bin"}
+    ${optionalString enableSeparateBinOutput "mkdir -p $bin/bin"}
 
     runHook postInstall
   '';
