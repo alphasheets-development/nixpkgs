@@ -95,7 +95,8 @@ let
                    '';
 
   hasActiveLibrary = isLibrary && (enableStaticLibraries || enableSharedLibraries || enableLibraryProfiling);
-  libDir = if enableSeparateLibOutput && hasActiveLibrary then "$lib/lib/${ghc.name}" else "$out/lib/${ghc.name}";
+  hasLibOutput = enableSeparateLibOutput && hasActiveLibrary;
+  libDir = if hasLibOutput then "$lib/lib/${ghc.name}" else "$out/lib/${ghc.name}";
   binDir = if enableSeparateBinOutput then "$bin/bin" else "$out/bin";
   libexecDir = if enableSeparateBinOutput then "$libexec/bin" else "$out/libexec";
   etcDir = if enableSeparateEtcOutput then "$etc/etc" else "$out/etc";
@@ -195,7 +196,7 @@ assert allPkgconfigDepends != [] -> pkgconfig != null;
 stdenv.mkDerivation ({
   name = "${pname}-${version}";
 
-  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin") ++ (optional enableSeparateBinOutput "libexec") ++ (optional (enableSeparateLibOutput && hasActiveLibrary) "lib"));
+  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin") ++ (optional enableSeparateBinOutput "libexec") ++ (optional hasLibOutput "lib"));
   setOutputFlags = false;
 
   pos = builtins.unsafeGetAttrPos "pname" args;
@@ -360,7 +361,7 @@ stdenv.mkDerivation ({
     done
     ''}
 
-    ${optionalString enableSeparateLibOutput ''
+    ${optionalString hasLibOutput ''
     # Even if we don't have binary output for the package, things like
     # Paths files will embed paths to bin/libexec directories in themselves
     # which results in .lib <-> $out cyclic store reference. We
@@ -379,7 +380,7 @@ stdenv.mkDerivation ({
         ${optionalString (! enableSeparateDataOutput) "-t $out/share"} "{}" \;
     ''}
 
-    ${optionalString (enableSeparateLibOutput && ! enableSeparateDocOutput) ''
+    ${optionalString (hasLibOutput && ! enableSeparateDocOutput) ''
     # If we don't have separate docs, we have to patch out the ref to
     # docs in package conf. This will likely break Haddock
     # cross-package links but is necessary to break store cycle…
