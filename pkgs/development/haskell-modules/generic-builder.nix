@@ -101,6 +101,7 @@ let
   libexecDir = if enableSeparateBinOutput then "$libexec/bin" else "$out/libexec";
   etcDir = if enableSeparateEtcOutput then "$etc/etc" else "$out/etc";
   docDir = if enableSeparateDocOutput then "$doc/share/doc" else "$out/share/doc";
+  dataDir = if enableSeparateDataOutput then "$data/share/${ghc.name}" else "$out/share/${ghc.name}";
 
   # We cannot enable -j<n> parallelism for libraries because GHC is far more
   # likely to generate a non-determistic library ID in that case. Further
@@ -128,7 +129,7 @@ let
     "--libdir=${libDir}" "--libsubdir=\\$pkgid"
     "--libexecdir=${libexecDir}"
     "--sysconfdir=${etcDir}"
-    (optionalString enableSeparateDataOutput "--datadir=$data/share/${ghc.name}")
+    "--datadir=${dataDir}"
     "--docdir=${docDir}"
     "--with-gcc=$CC" # Clang won't work without that extra information.
     "--package-db=$packageConfDir"
@@ -377,7 +378,7 @@ stdenv.mkDerivation ({
     # $out/share if we're not splitting out data directory.
     find ${libDir}/${pname}-${version}/ -type f -exec \
       remove-references-to -t ${binDir} -t ${libexecDir} \
-        ${optionalString (! enableSeparateDataOutput) "-t $out/share"} "{}" \;
+        ${optionalString (! enableSeparateDataOutput) "-t ${dataDir}"} "{}" \;
     ''}
 
     ${optionalString (hasLibOutput && ! enableSeparateDocOutput) ''
@@ -386,6 +387,14 @@ stdenv.mkDerivation ({
     # cross-package links but is necessary to break store cycle…
     find ${libDir}/ -type f -name '*.conf' -exec \
       remove-references-to -t ${docDir} "{}" \;
+    ''}
+
+    ${optionalString (hasLibOutput && ! enableSeparateDataOutput) ''
+    # Just like for doc output path in $out potentially landing in
+    # *.conf, we have to also remove the data directory so that it
+    # doesn't appear under data-dir field creating a cycle.
+    find ${libDir}/ -type f -name '*.conf' -exec \
+      remove-references-to -t ${dataDir} "{}" \;
     ''}
 
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
