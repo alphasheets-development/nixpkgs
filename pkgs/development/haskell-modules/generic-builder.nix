@@ -376,9 +376,16 @@ stdenv.mkDerivation ({
     #
     # Lastly we have to deal with references from .lib back into
     # $out/share if we're not splitting out data directory.
-    find ${libDir}/${pname}-${version}/ -type f -exec \
-      remove-references-to -t ${binDir} -t ${libexecDir} \
-        ${optionalString (! enableSeparateDataOutput) "-t ${dataDir}"} "{}" \;
+    #
+    # It may happen that we have hasLibOutput set but the library
+    # directory was not created: this happens in the case that library
+    # section is not exposing any modules. See "fail" package for an
+    # example where no modules are exposed for GHC >= 8.0.
+    if [ -d ${libDir}/${pname}-${version} ]; then
+      find ${libDir}/${pname}-${version}/ -type f -exec \
+        remove-references-to -t ${binDir} -t ${libexecDir} \
+          ${optionalString (! enableSeparateDataOutput) "-t ${dataDir}"} "{}" \;
+    fi
     ''}
 
     ${optionalString (hasLibOutput && ! enableSeparateDocOutput) ''
