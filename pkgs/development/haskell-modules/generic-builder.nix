@@ -53,7 +53,7 @@
 , coreSetup ? false # Use only core packages to build Setup.hs.
 , useCpphs ? false
 , hardeningDisable ? lib.optional (ghc.isHaLVM or false) "all"
-, enableSeparateDataOutput ? true
+, enableSeparateDataOutput ? false
 , enableSeparateDocOutput ? doHaddock
 , enableSeparateBinOutput ? isExecutable
 , outputsToInstall ? []
@@ -99,6 +99,7 @@ let
   binDir = if enableSeparateBinOutput then "$bin/bin" else "$out/bin";
   libexecDir = if enableSeparateBinOutput then "$libexec/bin" else "$out/libexec";
   etcDir = if enableSeparateEtcOutput then "$etc/etc" else "$out/etc";
+  docDir = if enableSeparateDocOutput then "$doc/share/doc" else "$out/share/doc";
 
   # We cannot enable -j<n> parallelism for libraries because GHC is far more
   # likely to generate a non-determistic library ID in that case. Further
@@ -127,7 +128,7 @@ let
     "--libexecdir=${libexecDir}"
     "--sysconfdir=${etcDir}"
     (optionalString enableSeparateDataOutput "--datadir=$data/share/${ghc.name}")
-    (optionalString enableSeparateDocOutput "--docdir=$doc/share/doc")
+    "--docdir=${docDir}"
     "--with-gcc=$CC" # Clang won't work without that extra information.
     "--package-db=$packageConfDir"
     (optionalString (enableSharedExecutables && stdenv.isLinux) "--ghc-option=-optl=-Wl,-rpath=${libDir}/${pname}-${version}")
@@ -352,9 +353,12 @@ stdenv.mkDerivation ({
     # docs. $lib is needed as it stores path to haddock interfaces in the
     # conf file which creates a cycle if docs refer back to library
     # path.
-    for x in $doc/share/doc/html/src/*.html; do
+    mkdir -p ${docDir}
+
+    for x in ${docDir}/html/src/*.html; do
       remove-references-to -t $out -t ${libDir} -t ${binDir} ${optionalString enableSeparateDataOutput "-t $data"} $x
     done
+    ''}
 
     ${optionalString enableSeparateLibOutput ''
     # Even if we don't have binary output for the package, things like
@@ -367,11 +371,22 @@ stdenv.mkDerivation ({
     # trouble in case of shared executables: executable contains path to
     # .lib, .lib contains path (through Paths) to .bin and we have a
     # cycle.
+    #
+    # Lastly we have to deal with references from .lib back into
+    # $out/share if we're not splitting out data directory.
     find ${libDir}/${pname}-${version}/ -type f -exec \
-      remove-references-to -t ${binDir} -t ${libexecDir} "{}" \;
+      remove-references-to -t ${binDir} -t ${libexecDir} \
+        ${optionalString (! enableSeparateDataOutput) "-t $out/share"} "{}" \;
     ''}
-    mkdir -p $doc
+
+    ${optionalString (enableSeparateLibOutput && ! enableSeparateDocOutput) ''
+    # If we don't have separate docs, we have to patch out the ref to
+    # docs in package conf. This will likely break Haddock
+    # cross-package links but is necessary to break store cycle…
+    find ${libDir}/ -type f -name '*.conf' -exec \
+      remove-references-to -t ${docDir} "{}" \;
     ''}
+
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
     ${optionalString enableSeparateBinOutput "mkdir -p ${binDir} ${libexecDir}"}
     ${optionalString enableSeparateEtcOutput "mkdir -p ${etcDir}"}
