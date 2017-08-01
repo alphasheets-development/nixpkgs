@@ -53,11 +53,12 @@
 , coreSetup ? false # Use only core packages to build Setup.hs.
 , useCpphs ? false
 , hardeningDisable ? lib.optional (ghc.isHaLVM or false) "all"
-, enableSeparateDataOutput ? false
+, enableSeparateDataOutput ? true
 , enableSeparateDocOutput ? doHaddock
 , enableSeparateBinOutput ? isExecutable
 , outputsToInstall ? []
-, enableSeparateLibOutput ? false
+, enableSeparateLibOutput ? true
+, enableSeparateEtcOutput ? true
 } @ args:
 
 assert editedCabalFile != null -> revision != null;
@@ -96,6 +97,8 @@ let
   hasActiveLibrary = isLibrary && (enableStaticLibraries || enableSharedLibraries || enableLibraryProfiling);
   libDir = if enableSeparateLibOutput && hasActiveLibrary then "$lib/lib/${ghc.name}" else "$out/lib/${ghc.name}";
   binDir = if enableSeparateBinOutput then "$bin/bin" else "$out/bin";
+  libexecDir = if enableSeparateBinOutput then "$libexec/bin" else "$out/libexec";
+  etcDir = if enableSeparateEtcOutput then "$etc/etc" else "$out/etc";
 
   # We cannot enable -j<n> parallelism for libraries because GHC is far more
   # likely to generate a non-determistic library ID in that case. Further
@@ -119,8 +122,10 @@ let
     # is so that the package is added to the PATH when it's used as a
     # build input. Sadly mkDerivation won't add inputs that don't have
     # bin subdirectory.
-    (optionalString enableSeparateBinOutput "--bindir=${binDir}")
+    "--bindir=${binDir}"
     "--libdir=${libDir}" "--libsubdir=\\$pkgid"
+    "--libexecdir=${libexecDir}"
+    "--sysconfdir=${etcDir}"
     (optionalString enableSeparateDataOutput "--datadir=$data/share/${ghc.name}")
     (optionalString enableSeparateDocOutput "--docdir=$doc/share/doc")
     "--with-gcc=$CC" # Clang won't work without that extra information.
@@ -189,7 +194,7 @@ assert allPkgconfigDepends != [] -> pkgconfig != null;
 stdenv.mkDerivation ({
   name = "${pname}-${version}";
 
-  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin") ++ (optional (enableSeparateLibOutput && hasActiveLibrary) "lib"));
+  outputs = if (args ? outputs) then args.outputs else ([ "out" ] ++ (optional enableSeparateDataOutput "data") ++ (optional enableSeparateDocOutput "doc") ++ (optional enableSeparateBinOutput "bin") ++ (optional enableSeparateBinOutput "libexec") ++ (optional (enableSeparateLibOutput && hasActiveLibrary) "lib"));
   setOutputFlags = false;
 
   pos = builtins.unsafeGetAttrPos "pname" args;
@@ -343,13 +348,33 @@ stdenv.mkDerivation ({
     ''}
 
     ${optionalString enableSeparateDocOutput ''
+    # Remove references back to $out but also back to $lib if we have
+    # docs. $lib is needed as it stores path to haddock interfaces in the
+    # conf file which creates a cycle if docs refer back to library
+    # path.
     for x in $doc/share/doc/html/src/*.html; do
-      remove-references-to -t $out $x
+      remove-references-to -t $out -t ${libDir} -t ${binDir} ${optionalString enableSeparateDataOutput "-t $data"} $x
     done
+
+    ${optionalString enableSeparateLibOutput ''
+    # Even if we don't have binary output for the package, things like
+    # Paths files will embed paths to bin/libexec directories in themselves
+    # which results in .lib <-> $out cyclic store reference. We
+    # therefore patch out the paths from separate library if we don't have
+    # separate bin output too.
+    #
+    # If we _do_ have separate bin and lib outputs, we may still be in
+    # trouble in case of shared executables: executable contains path to
+    # .lib, .lib contains path (through Paths) to .bin and we have a
+    # cycle.
+    find ${libDir}/${pname}-${version}/ -type f -exec \
+      remove-references-to -t ${binDir} -t ${libexecDir} "{}" \;
+    ''}
     mkdir -p $doc
     ''}
     ${optionalString enableSeparateDataOutput "mkdir -p $data"}
-    ${optionalString enableSeparateBinOutput "mkdir -p ${binDir}"}
+    ${optionalString enableSeparateBinOutput "mkdir -p ${binDir} ${libexecDir}"}
+    ${optionalString enableSeparateEtcOutput "mkdir -p ${etcDir}"}
 
     runHook postInstall
   '';
