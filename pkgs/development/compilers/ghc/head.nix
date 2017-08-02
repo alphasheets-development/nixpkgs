@@ -10,7 +10,7 @@
 let
   inherit (bootPkgs) ghc;
 
-  commonBuildInputs = [ ghc perl autoconf automake happy alex python3 ];
+  commonBuildInputs = [ ghc perl autoconf automake (stdenv.lib.getBin happy) (stdenv.lib.getBin alex) python3 ];
 
   version = "8.1.20170106";
   rev = "b4f2afe70ddbd0576b4eba3f82ba1ddc52e9b3bd";

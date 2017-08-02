@@ -877,4 +877,8 @@ self: super: {
   # https://github.com/vincenthz/hs-tls/issues/247
   tls = dontCheck super.tls;
 
+  # Has extra data files which are referred to from the binary output,
+  # creating a store reference cycle. Putting data in separate output
+  # solves the problem.
+  happy = overrideCabal super.happy (drv: { enableSeparateDataOutput = true; });
 }
