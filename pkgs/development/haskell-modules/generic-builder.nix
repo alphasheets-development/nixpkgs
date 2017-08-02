@@ -381,8 +381,8 @@ stdenv.mkDerivation ({
     # directory was not created: this happens in the case that library
     # section is not exposing any modules. See "fail" package for an
     # example where no modules are exposed for GHC >= 8.0.
-    if [ -d ${libDir}/${pname}-${version} ]; then
-      find ${libDir}/${pname}-${version}/ -type f -exec \
+    if [ -d ${libDir} ]; then
+      find ${libDir} -type f -exec \
         remove-references-to -t ${binDir} -t ${libexecDir} "{}" \;
     fi
     ''}
