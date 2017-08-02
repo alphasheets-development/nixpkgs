@@ -383,8 +383,7 @@ stdenv.mkDerivation ({
     # example where no modules are exposed for GHC >= 8.0.
     if [ -d ${libDir}/${pname}-${version} ]; then
       find ${libDir}/${pname}-${version}/ -type f -exec \
-        remove-references-to -t ${binDir} -t ${libexecDir} \
-          ${optionalString (! enableSeparateDataOutput) "-t ${dataDir}"} "{}" \;
+        remove-references-to -t ${binDir} -t ${libexecDir} "{}" \;
     fi
     ''}
 
@@ -400,11 +399,12 @@ stdenv.mkDerivation ({
     # Just like for doc output path in $out potentially landing in
     # *.conf, we have to also remove the data directory so that it
     # doesn't appear under data-dir field creating a cycle.
-    find ${libDir}/ -type f -name '*.conf' -exec \
+    find ${libDir}/ -type f -exec echo Removing ${dataDir} refs from "{}" \;
+    find ${libDir}/ -type f -exec \
       remove-references-to -t ${dataDir} "{}" \;
     ''}
 
-    ${optionalString enableSeparateDataOutput "mkdir -p $data"}
+    ${optionalString enableSeparateDataOutput "mkdir -p ${dataDir}"}
     ${optionalString enableSeparateBinOutput "mkdir -p ${binDir} ${libexecDir}"}
     ${optionalString enableSeparateEtcOutput "mkdir -p ${etcDir}"}
 
