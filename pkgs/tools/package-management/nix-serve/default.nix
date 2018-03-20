@@ -1,4 +1,4 @@
-{ stdenv, fetchFromGitHub,
+{ stdenv, fetchFromGitHub, fetchpatch,
   bzip2, nix, perl, perlPackages,
 }:
 
@@ -17,6 +17,14 @@ stdenv.mkDerivation rec {
     repo = "nix-serve";
     inherit rev sha256;
   };
+
+  patches = [
+    # Fixes nix 2.0 incompatibility
+    (fetchpatch {
+      url = "https://github.com/edolstra/nix-serve/pull/8.patch";
+      sha256 = "1hg066k1f05qk2x4q7y95v4kpfwl2vjlpcm9mpr09znyj5qpk8qn";
+    })
+  ];
 
   buildInputs = [ bzip2 perl nix nix.perl-bindings ]
     ++ (with perlPackages; [ DBI DBDSQLite Plack Starman ]);
